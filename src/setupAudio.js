@@ -8,6 +8,26 @@ async function getWebAudioMediaStream() {
   }
 
   try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+
+    for(const device of devices) {
+        console.log(`${device.kind} : ${device.label} : ${device.deviceId}`);
+    }
+
+    for(const device of devices) {
+        if(device.kind == "audioinput" && device.label.indexOf("BlackHole") != -1) {
+            return await window.navigator.mediaDevices.getUserMedia({
+                audio: { deviceId: device.deviceId },
+                video: false
+            });
+        }
+    }
+
+  } catch(e) {
+      console.log(e.name + ": " + e.message);
+  }
+
+  try {
     const result = await window.navigator.mediaDevices.getUserMedia({
       audio: true,
       video: false,

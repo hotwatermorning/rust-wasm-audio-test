@@ -9,8 +9,10 @@ class PitchProcessor extends AudioWorkletProcessor {
     // once we know how many samples need to be stored. Meanwhile, an empty
     // array is used, so that early calls to process() with empty channels
     // do not break initialization.
-    this.samples = [];
-    this.totalSamples = 0;
+    this.processBuffer = [];
+    this.numProcessBufferSamples = 0;
+    this.outputBuffer = [];
+    this.numOutputBufferSamples = 0;
 
     // Listen to events from the PitchNode running on the main thread.
     this.port.onmessage = (event) => this.onmessage(event.data);
@@ -37,12 +39,15 @@ class PitchProcessor extends AudioWorkletProcessor {
 
       // Holds a buffer of audio sample values that we'll send to the Wasm module
       // for analysis at regular intervals.
-      this.samples = new Array(numAudioSamplesPerAnalysis).fill(0);
-      this.totalSamples = 0;
+      this.processBuffer = new Array(numAudioSamplesPerAnalysis).fill(0);
+      this.outputBuffer = new Array(numAudioSamplesPerAnalysis + 128).fill(0);
+      this.numProcessBufferSamples = 0;
+      this.numOutputBufferSamples = this.outputBuffer.length;
     }
   };
 
   process(inputs, outputs) {
+
     // inputs contains incoming audio samples for further processing. outputs
     // contains the audio samples resulting from any processing performed by us.
     // Here, we are performing analysis only to detect pitches so do not modify
@@ -54,44 +59,51 @@ class PitchProcessor extends AudioWorkletProcessor {
     // stereo.
 
     const inputChannels = inputs[0];
+    const outputChannels = outputs[0];
 
     // inputSamples holds an array of new samples to process.
     const inputSamples = inputChannels[0];
+    const outputSamples = outputChannels[0];
+    const len = inputSamples.length;
 
-    // In the AudioWorklet spec, process() is called whenever exactly 128 new
-    // audio samples have arrived. We simplify the logic for filling up the
-    // buffer by making an assumption that the analysis size is 128 samples or
-    // larger and is a power of 2.
-    if (this.totalSamples < this.numAudioSamplesPerAnalysis) {
-      for (const sampleValue of inputSamples) {
-        this.samples[this.totalSamples++] = sampleValue;
-      }
-    } else {
-      // Buffer is already full. We do not want the buffer to grow continually,
-      // so instead will "cycle" the samples through it so that it always
-      // holds the latest ordered samples of length equal to
-      // numAudioSamplesPerAnalysis.
-
-      // Shift the existing samples left by the length of new samples (128).
-      const numNewSamples = inputSamples.length;
-      const numExistingSamples = this.samples.length - numNewSamples;
-      for (let i = 0; i < numExistingSamples; i++) {
-        this.samples[i] = this.samples[i + numNewSamples];
-      }
-      // Add the new samples onto the end, into the 128-wide slot vacated by
-      // the previous copy.
-      for (let i = 0; i < numNewSamples; i++) {
-        this.samples[numExistingSamples + i] = inputSamples[i];
-      }
-      this.totalSamples += inputSamples.length;
+    for (let i = 0; i < len; ++i) {
+      outputSamples[i] = this.outputBuffer[i];
     }
 
+    const numToMove = this.numOutputBufferSamples - len;
+    for (let i = 0; i < numToMove; ++i) {
+      this.outputBuffer[i] = this.outputBuffer[i + len];
+    }
+    this.numOutputBufferSamples = numToMove;
+
+    for(let i = 0; i < len; ++i) {
+      this.processBuffer[this.numProcessBufferSamples + i] = inputSamples[i];
+    }
+    this.numProcessBufferSamples += len;
+
     // Once our buffer has enough samples, pass them to the Wasm pitch detector.
-    if (this.totalSamples >= this.numAudioSamplesPerAnalysis && this.detector) {
-      const result = this.detector.detect_pitch(this.samples);
+    if (this.numProcessBufferSamples >= this.numAudioSamplesPerAnalysis && this.detector) {
+      const result = this.detector.detect_pitch(this.processBuffer);
 
       if (result !== 0) {
         this.port.postMessage({ type: "pitch", pitch: result });
+      }
+
+      {
+        // push output buffer
+        const currentSize = this.numOutputBufferSamples;
+        for (let i = 0; i < this.numAudioSamplesPerAnalysis; ++i) {
+          this.outputBuffer[currentSize + i] = this.processBuffer[i];
+        }
+        this.numOutputBufferSamples = currentSize + this.numAudioSamplesPerAnalysis;
+      }
+
+      {
+        const numToMove = this.numProcessBufferSamples - this.numAudioSamplesPerAnalysis;
+        for(let i = 0; i < numToMove; ++i) {
+          this.processBuffer[i] = this.processBuffer[i + this.numAudioSamplesPerAnalysis];
+        }
+        this.numProcessBufferSamples = numToMove;
       }
     }
 
