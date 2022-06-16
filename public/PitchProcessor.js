@@ -43,6 +43,10 @@ class PitchProcessor extends AudioWorkletProcessor {
       this.outputBuffer = new Float32Array(numAudioSamplesPerAnalysis + 128).fill(0);
       this.numProcessBufferSamples = 0;
       this.numOutputBufferSamples = this.outputBuffer.length;
+    } else if(event.type === "enable_delay") {
+      this.detector.enable_delay(true);
+    } else if(event.type === "disable_delay") {
+      this.detector.enable_delay(false);
     }
   };
 

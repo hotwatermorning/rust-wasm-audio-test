@@ -41,6 +41,14 @@ export default class PitchNode extends AudioWorkletNode {
     } else if (event.type === "pitch") {
       // A pitch was detected. Invoke our callback which will result in the UI updating.
       this.onPitchDetectedCallback(event.pitch);
+    } else if (event.type === "enable_delay") {
+      this.port.postMessage({
+          enable_delay: true
+      });
+    } else if (event.type === "disable_delay") {
+      this.port.postMessage({
+          enable_delay: false
+      });
     }
   }
 }
