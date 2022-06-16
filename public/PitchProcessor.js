@@ -39,8 +39,8 @@ class PitchProcessor extends AudioWorkletProcessor {
 
       // Holds a buffer of audio sample values that we'll send to the Wasm module
       // for analysis at regular intervals.
-      this.processBuffer = new Array(numAudioSamplesPerAnalysis).fill(0);
-      this.outputBuffer = new Array(numAudioSamplesPerAnalysis + 128).fill(0);
+      this.processBuffer = new Float32Array(numAudioSamplesPerAnalysis).fill(0);
+      this.outputBuffer = new Float32Array(numAudioSamplesPerAnalysis + 128).fill(0);
       this.numProcessBufferSamples = 0;
       this.numOutputBufferSamples = this.outputBuffer.length;
     }
@@ -83,7 +83,12 @@ class PitchProcessor extends AudioWorkletProcessor {
 
     // Once our buffer has enough samples, pass them to the Wasm pitch detector.
     if (this.numProcessBufferSamples >= this.numAudioSamplesPerAnalysis && this.detector) {
-      const result = this.detector.detect_pitch(this.processBuffer);
+      const saved = new Array(this.numAudioSamplesPerAnalysis);
+      for(let i = 0; i < this.numAudioSamplesPerAnalysis; ++i) {
+        saved[i] = this.processBuffer[i];
+      }
+
+      const result = this.detector.detect_pitch(this.processBuffer, this.numAudioSamplesPerAnalysis);
 
       if (result !== 0) {
         this.port.postMessage({ type: "pitch", pitch: result });
