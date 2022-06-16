@@ -2,14 +2,6 @@ use pitch_detection::{McLeodDetector, PitchDetector};
 use wasm_bindgen::prelude::*;
 mod utils;
 
-#[wasm_bindgen]
-pub struct WasmPitchDetector {
-  sample_rate: usize,
-  fft_size: usize,
-  detector: McLeodDetector<f32>,
-  phase: f32,
-}
-
 extern crate web_sys;
 
 // A macro to provide `println!(..)`-style syntax for `console.log` logging.
@@ -19,7 +11,58 @@ macro_rules! log {
   }
 }
 
+#[derive(Debug)]
+struct DelayLine
+{
+  length: usize,
+  pos: usize,
+  array: Vec<f32>,
+  wetAmount: f32,
+  feedBack: f32,
+}
 
+impl DelayLine
+{
+  pub fn new(length: usize, wetAmount: f32, feedBack: f32) -> DelayLine
+  {
+    DelayLine {
+      length: length,
+      pos: 0,
+      array: vec![0.0; length],
+      wetAmount: wetAmount,
+      feedBack: feedBack
+    }
+  }
+
+  pub fn process(&mut self, sample: f32) -> f32
+  {
+    let before = sample;
+
+    let dryAmount = 1.0 - self.wetAmount;
+    let p = &mut self.array[self.pos];
+
+    let wetSample = sample + *p * self.feedBack;
+    *p = wetSample;
+    self.pos = (self.pos + 1) % self.length;
+
+    (sample * dryAmount) + (wetSample * self.wetAmount)
+//     log!("pos: {}, before: {}, after: {}", self.pos, before, x);
+  }
+
+  pub fn dump(&self) -> String {
+    format!("{:?}", self)
+  }
+}
+
+#[wasm_bindgen]
+pub struct WasmPitchDetector {
+  sample_rate: usize,
+  fft_size: usize,
+  detector: McLeodDetector<f32>,
+  phase: f32,
+  delay: DelayLine,
+  enable_delay: bool,
+}
 
 #[wasm_bindgen]
 impl WasmPitchDetector {
@@ -28,12 +71,22 @@ impl WasmPitchDetector {
 
     let fft_pad = fft_size / 2;
 
-    WasmPitchDetector {
+    let d = WasmPitchDetector {
       sample_rate,
       fft_size,
       detector: McLeodDetector::<f32>::new(fft_size, fft_pad),
-      phase: 0.0
-    }
+      phase: 0.0,
+      delay: DelayLine::new(8192, 0.5, 0.78),
+      enable_delay: true,
+    };
+
+//     log!("{}", d.delay.dump());
+    d
+  }
+
+  pub fn enable_delay(&mut self, to_enable: bool)
+  {
+    self.enable_delay = to_enable;
   }
 
   pub fn detect_pitch(&mut self, buffer: &mut [f32]) -> f32 {
@@ -41,12 +94,16 @@ impl WasmPitchDetector {
 
     let before = buffer[0];
 
-    for x in buffer.iter_mut() {
-      *x = *x + self.phase.sin() * 0.1;
-      self.phase += omega;
-      if self.phase >= 2.0 * std::f32::consts::PI {
-        self.phase -= 2.0 * std::f32::consts::PI;
+    if self.enable_delay {
+      for x in buffer.iter_mut() {
+        *x = self.delay.process(*x);
+        self.phase += omega;
+        if self.phase >= 2.0 * std::f32::consts::PI {
+          self.phase -= 2.0 * std::f32::consts::PI;
+        }
       }
+    } else {
+      // do nothing
     }
 
     let after = buffer[0];
