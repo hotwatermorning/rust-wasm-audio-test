@@ -43,11 +43,11 @@ export default class ProcessorNode extends AudioWorkletNode {
     } else if (event.type === "update-levels") {
       // Receive level values. Invoke our callback which will result in the UI updating.
       this.onProcessCallback([event.inputLevel, event.outputLevel]);
-    } else if (event.type === "set_wet_amount") {
+    } else if (event.type === "set-wet-amount") {
       this.port.postMessage({
           value: event.value
       });
-    } else if (event.type === "set_feedback_amount") {
+    } else if (event.type === "set-feedback-amount") {
       this.port.postMessage({
           value: event.value
       });
