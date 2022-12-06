@@ -1,7 +1,7 @@
 import "./TextEncoder.js";
-import init, { WasmPitchDetector } from "./wasm-audio/wasm_audio.js";
+import init, { WasmProcessor } from "./wasm-audio/wasm_audio.js";
 
-class PitchProcessor extends AudioWorkletProcessor {
+class Processor extends AudioWorkletProcessor {
   constructor() {
     super();
 
@@ -13,40 +13,47 @@ class PitchProcessor extends AudioWorkletProcessor {
     this.numProcessBufferSamples = 0;
     this.outputBuffer = [];
     this.numOutputBufferSamples = 0;
+    this.levels = [];
 
-    // Listen to events from the PitchNode running on the main thread.
+    // Listen to events from the ProcessorNode running on the main thread.
     this.port.onmessage = (event) => this.onmessage(event.data);
 
-    this.detector = null;
+    this.processor = null;
   }
 
   onmessage(event) {
     if (event.type === "send-wasm-module") {
-      // PitchNode has sent us a message containing the Wasm library to load into
+      // ProcessorNode has sent us a message containing the Wasm library to load into
       // our context as well as information about the audio device used for
       // recording.
       init(WebAssembly.compile(event.wasmBytes)).then(() => {
         this.port.postMessage({ type: 'wasm-module-loaded' });
       });
-    } else if (event.type === 'init-detector') {
-      const { sampleRate, numAudioSamplesPerAnalysis } = event;
+    } else if (event.type === 'init-processor') {
+      const { sampleRate, blockSize, wetAmount, feedback } = event;
 
-      // Store this because we use it later to detect when we have enough recorded
+      // Store this because we use it later to process when we have enough recorded
       // audio samples for our first analysis.
-      this.numAudioSamplesPerAnalysis = numAudioSamplesPerAnalysis;
+      this.blockSize = blockSize;
 
-      this.detector = WasmPitchDetector.new(sampleRate, numAudioSamplesPerAnalysis);
+      this.processor = WasmProcessor.new(
+        sampleRate,
+        blockSize,
+        wetAmount,
+        feedback
+      );
 
       // Holds a buffer of audio sample values that we'll send to the Wasm module
       // for analysis at regular intervals.
-      this.processBuffer = new Float32Array(numAudioSamplesPerAnalysis).fill(0);
-      this.outputBuffer = new Float32Array(numAudioSamplesPerAnalysis + 128).fill(0);
+      this.processBuffer = new Float32Array(blockSize).fill(0);
+      this.outputBuffer = new Float32Array(blockSize + blockSize).fill(0);
       this.numProcessBufferSamples = 0;
       this.numOutputBufferSamples = this.outputBuffer.length;
-    } else if(event.type === "enable_delay") {
-      this.detector.enable_delay(true);
-    } else if(event.type === "disable_delay") {
-      this.detector.enable_delay(false);
+      this.levels = new Float32Array(2).fill(0);
+    } else if(event.type === "set_wet_amount") {
+      this.processor.set_wet_amount(event.value);
+    } else if(event.type === "set_feedback_amount") {
+      this.processor.set_feedback_amount(event.value);
     }
   };
 
@@ -54,8 +61,6 @@ class PitchProcessor extends AudioWorkletProcessor {
 
     // inputs contains incoming audio samples for further processing. outputs
     // contains the audio samples resulting from any processing performed by us.
-    // Here, we are performing analysis only to detect pitches so do not modify
-    // outputs.
 
     // inputs holds one or more "channels" of samples. For example, a microphone
     // that records "in stereo" would provide two channels. For this simple app,
@@ -85,32 +90,36 @@ class PitchProcessor extends AudioWorkletProcessor {
     }
     this.numProcessBufferSamples += len;
 
-    // Once our buffer has enough samples, pass them to the Wasm pitch detector.
-    if (this.numProcessBufferSamples >= this.numAudioSamplesPerAnalysis && this.detector) {
-      const saved = new Array(this.numAudioSamplesPerAnalysis);
-      for(let i = 0; i < this.numAudioSamplesPerAnalysis; ++i) {
+    // Once our buffer has enough samples, pass them to the Wasm processor.
+    if (this.numProcessBufferSamples >= this.blockSize && this.processor) {
+      const saved = new Array(this.blockSize);
+      for(let i = 0; i < this.blockSize; ++i) {
         saved[i] = this.processBuffer[i];
       }
 
-      const result = this.detector.detect_pitch(this.processBuffer, this.numAudioSamplesPerAnalysis);
+      this.levels.fill(0);
 
-      if (result !== 0) {
-        this.port.postMessage({ type: "pitch", pitch: result });
-      }
+      this.processor.process(this.processBuffer, this.levels);
+
+      // this.port.postMessage({
+      //   type: "update-levels",
+      //   inputLevel: this.levels[0],
+      //   outputLevel: this.levels[1],
+      // });
 
       {
         // push output buffer
         const currentSize = this.numOutputBufferSamples;
-        for (let i = 0; i < this.numAudioSamplesPerAnalysis; ++i) {
+        for (let i = 0; i < this.blockSize; ++i) {
           this.outputBuffer[currentSize + i] = this.processBuffer[i];
         }
-        this.numOutputBufferSamples = currentSize + this.numAudioSamplesPerAnalysis;
+        this.numOutputBufferSamples = currentSize + this.blockSize;
       }
 
       {
-        const numToMove = this.numProcessBufferSamples - this.numAudioSamplesPerAnalysis;
+        const numToMove = this.numProcessBufferSamples - this.blockSize;
         for(let i = 0; i < numToMove; ++i) {
-          this.processBuffer[i] = this.processBuffer[i + this.numAudioSamplesPerAnalysis];
+          this.processBuffer[i] = this.processBuffer[i + this.blockSize];
         }
         this.numProcessBufferSamples = numToMove;
       }
@@ -121,4 +130,4 @@ class PitchProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor("PitchProcessor", PitchProcessor);
+registerProcessor("Processor", Processor);

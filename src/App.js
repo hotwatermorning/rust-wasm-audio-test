@@ -1,18 +1,64 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import "./App.css";
 import { setupAudio } from "./setupAudio";
 
-function PitchReadout({ running, latestPitch }) {
+function SliderWithName({name, parameterId, onChangeParameter}) {
+  return (<>
+    <>{name}</>
+    <input type="range" defaultValue={0} min={0} max={1} step={"any"}
+  onChange={(event) => onChangeParameter(parameterId, event.target.value)}>
+    </input>
+  </>);
+}
+
+function Control({ onChangeParameter }) {
   return (
-    <div className="Pitch-readout">
-      {latestPitch
-        ? `Latest pitch: ${latestPitch.toFixed(1)} Hz`
-        : running
-        ? "Listening..."
-        : "Paused"}
-    </div>
+    <>
+      <SliderWithName
+        name={"Wet Amount"}
+        parameterId={"wet-amount"}
+        onChangeParameter={onChangeParameter}
+      />
+      <SliderWithName
+        name={"Feedback"}
+        parameterId={"feedback-amount"}
+        onChangeParameter={onChangeParameter}
+      />
+    </>
   );
 }
+
+function LevelMeter({ decibel, minDecibel, maxDecibel }) {
+  decibel = Math.min(maxDecibel, Math.max(decibel, minDecibel));
+  let range = maxDecibel - minDecibel;
+  let ratio = (decibel - minDecibel) / range;
+
+  let width = 40;
+  let height = 200;
+  let x = (1.0 - ratio) * height;
+  return (
+    <svg width={width} height={height} viewBox={`0, 0, ${width}, ${height}`} xmlns="http://www.w3.org/2000/svg">
+      <rect x={0} y={0} width={width} height={height} fill="#241212"></rect>
+      <rect x={x} y={0} width={width} height={height - x} fill="#7CFC00"></rect>
+    </svg>
+  );
+}
+
+// function DeviceSelector({onSelected})
+// {
+//   const [ devices, setDevices ] = useState(undefined);
+//
+//   useEffect(() => {
+//     (async () => {
+//       setDevices(await navigator.mediaDevices.enumerateDevices());
+//     })();
+//   }, []);
+//
+//   return (
+//     <>
+//     </>
+//   );
+// }
 
 function AudioRecorderControl() {
   // Ensure the latest state of the audio module is reflected in the UI
@@ -30,9 +76,8 @@ function AudioRecorderControl() {
   //    processing audio and is used to provide button text (Start vs Stop).
   const [running, setRunning] = React.useState(false);
 
-  // 3. latestPitch holds the latest detected pitch to be displayed in
-  //    the UI.
-  const [latestPitch, setLatestPitch] = React.useState(undefined);
+  // 3. level values
+  const [levels, setLevels] = React.useState(undefined);
 
   // Initial state. Initialize the web audio once a user gesture on the page
   // has been registered.
@@ -40,7 +85,7 @@ function AudioRecorderControl() {
     return (
       <button
         onClick={async () => {
-          setAudio(await setupAudio(setLatestPitch));
+          setAudio(await setupAudio(setLevels));
           setRunning(true);
         }}
       >
@@ -48,6 +93,20 @@ function AudioRecorderControl() {
       </button>
     );
   }
+
+  const changeParameter = (type, value) => {
+    if(type === "wet-amount") {
+      audio.node.port.postMessage({
+        type: "set-wet-amount",
+        value
+      });
+    } else if(type === "feedback-amount") {
+      audio.node.port.postMessage({
+        type: "set-feedback-amount",
+        value
+      });
+    }
+  };
 
   // Audio already initialized. Suspend / resume based on its current state.
   const { context } = audio;
@@ -67,7 +126,7 @@ function AudioRecorderControl() {
       >
         {running ? "Pause" : "Resume"}
       </button>
-      <PitchReadout running={running} latestPitch={latestPitch} />
+      <Control running={running} onChangeParameter={changeParameter} />
     </div>
   );
 }

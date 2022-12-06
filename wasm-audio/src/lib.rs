@@ -1,4 +1,3 @@
-use pitch_detection::{McLeodDetector, PitchDetector};
 use wasm_bindgen::prelude::*;
 mod utils;
 
@@ -11,41 +10,59 @@ macro_rules! log {
   }
 }
 
+fn decibel_to_gain(decibel: f32) -> f32
+{
+  (10.0 as f32).powf(decibel / 20.0)
+}
+
+fn gain_to_decibel(gain: f32, min_decibel: f32) -> f32
+{
+  if gain == 0.0 {
+    return min_decibel;
+  }
+
+  let tmp = 20.0 * gain.abs().log10();
+  tmp.max(min_decibel)
+}
+
+const LEVEL_REDUCTION_PER_SAMPLE: f32 = 1.0 / 24000.0;
+const MIN_DECIBEL: f32 = -48.0;
+static mut MIN_DECIBEL_GAIN: f32 = 0.0;
 #[derive(Debug)]
 struct DelayLine
 {
   length: usize,
   pos: usize,
   array: Vec<f32>,
-  wetAmount: f32,
-  feedBack: f32,
+  wet_amount: f32,
+  feedback_amount: f32,
 }
 
 impl DelayLine
 {
-  pub fn new(length: usize, wetAmount: f32, feedBack: f32) -> DelayLine
+  pub fn new(length: usize, wet_amount: f32, feedback_amount: f32) -> DelayLine
   {
     DelayLine {
-      length: length,
+      length,
       pos: 0,
       array: vec![0.0; length],
-      wetAmount: wetAmount,
-      feedBack: feedBack
+      wet_amount,
+      feedback_amount
     }
   }
 
   pub fn process(&mut self, sample: f32) -> f32
   {
-    let before = sample;
+//   let before = sample;
 
-    let dryAmount = 1.0 - self.wetAmount;
+    let dry_amount = 1.0 - self.wet_amount;
     let p = &mut self.array[self.pos];
 
-    let wetSample = sample + *p * self.feedBack;
-    *p = wetSample;
+    let wet_sample = sample + *p * self.feedback_amount;
+    *p = wet_sample;
     self.pos = (self.pos + 1) % self.length;
 
-    (sample * dryAmount) + (wetSample * self.wetAmount)
+    (sample * dry_amount) + (wet_sample * self.wet_amount)
 //     log!("pos: {}, before: {}, after: {}", self.pos, before, x);
   }
 
@@ -55,89 +72,68 @@ impl DelayLine
 }
 
 #[wasm_bindgen]
-pub struct WasmPitchDetector {
+pub struct WasmProcessor {
   sample_rate: usize,
-  fft_size: usize,
-  detector: McLeodDetector<f32>,
   phase: f32,
   delay: DelayLine,
-  enable_delay: bool,
+  input_level: f32,
+  output_level: f32,
 }
 
 #[wasm_bindgen]
-impl WasmPitchDetector {
-  pub fn new(sample_rate: usize, fft_size: usize) -> WasmPitchDetector {
+impl WasmProcessor {
+  pub fn new(
+    sample_rate: usize,
+    initial_wet_amount: f32,
+    initial_feedback_amount: f32
+  ) -> WasmProcessor {
     utils::set_panic_hook();
 
-    let fft_pad = fft_size / 2;
+    unsafe { MIN_DECIBEL_GAIN = decibel_to_gain(MIN_DECIBEL); };
 
-    let d = WasmPitchDetector {
+    let d = WasmProcessor {
       sample_rate,
-      fft_size,
-      detector: McLeodDetector::<f32>::new(fft_size, fft_pad),
       phase: 0.0,
-      delay: DelayLine::new(8192, 0.5, 0.78),
-      enable_delay: true,
+      delay: DelayLine::new(8192, initial_wet_amount, initial_feedback_amount),
+      input_level: MIN_DECIBEL,
+      output_level: MIN_DECIBEL,
     };
 
 //     log!("{}", d.delay.dump());
     d
   }
 
-  pub fn enable_delay(&mut self, to_enable: bool)
-  {
-    self.enable_delay = to_enable;
-  }
+  pub fn process(&mut self, buffer: &mut [f32], levels: &mut [f32]) {
+//    log!("len of levels: {}", levels.len());
 
-  pub fn detect_pitch(&mut self, buffer: &mut [f32]) -> f32 {
     let omega = 440.0 * 2.0 * std::f32::consts::PI / self.sample_rate as f32;
 
-    let before = buffer[0];
+//    let before = buffer[0];
+    let new_input_level_gain = buffer.iter().max_by(|x, y| x.abs().total_cmp(&y.abs())).expect("buffer should not be empty");
+    let reduced_level = MIN_DECIBEL.max(self.input_level - LEVEL_REDUCTION_PER_SAMPLE * buffer.len() as f32);
+    levels[0] = gain_to_decibel(*new_input_level_gain, MIN_DECIBEL).max(reduced_level);
 
-    if self.enable_delay {
-      for x in buffer.iter_mut() {
-        *x = self.delay.process(*x);
-        self.phase += omega;
-        if self.phase >= 2.0 * std::f32::consts::PI {
-          self.phase -= 2.0 * std::f32::consts::PI;
-        }
+    for x in buffer.iter_mut() {
+      *x = self.delay.process(*x);
+      self.phase += omega;
+      if self.phase >= 2.0 * std::f32::consts::PI {
+        self.phase -= 2.0 * std::f32::consts::PI;
       }
-    } else {
-      // do nothing
     }
 
-    let after = buffer[0];
+    let new_output_level_gain = buffer.iter().max_by(|x, y| x.abs().total_cmp(&y.abs())).expect("buffer should not be empty");
+    let reduced_level = MIN_DECIBEL.max(self.output_level - LEVEL_REDUCTION_PER_SAMPLE * buffer.len() as f32);
+    levels[1] = gain_to_decibel(*new_output_level_gain, MIN_DECIBEL).max(reduced_level);
+//    let after = buffer[0];
 
 //     log!("before {}, after {}", before, after);
+  }
 
-    return 0.0
+  pub fn set_wet_amount(&mut self, value: f32) {
+    self.delay.wet_amount = value;
+  }
 
-//     if audio_samples.len() < self.fft_size {
-//       panic!("Insufficient samples passed to detect_pitch(). Expected an array containing {} elements but got {}", self.fft_size, audio_samples.len());
-//     }
-// 
-//     // Include only notes that exceed a power threshold which relates to the
-//     // amplitude of frequencies in the signal. Use the suggested default
-//     // value of 5.0 from the library.
-//     const POWER_THRESHOLD: f32 = 5.0;
-// 
-//     // The clarity measure describes how coherent the sound of a note is. For
-//     // example, the background sound in a crowded room would typically be would
-//     // have low clarity and a ringing tuning fork would have high clarity.
-//     // This threshold is used to accept detect notes that are clear enough
-//     // (valid values are in the range 0-1).
-//     const CLARITY_THRESHOLD: f32 = 0.6;
-// 
-//     let optional_pitch = self.detector.get_pitch(
-//       &audio_samples,
-//       self.sample_rate,
-//       POWER_THRESHOLD,
-//       CLARITY_THRESHOLD,
-//     );
-// 
-//     match optional_pitch {
-//       Some(pitch) => pitch.frequency,
-//       None => 0.0,
-//     }
+  pub fn set_feedback_amount(&mut self, value: f32) {
+    self.delay.feedback_amount = value;
   }
 }

@@ -19,11 +19,6 @@
   height: 85vh;
 }
 
-.Pitch-readout {
-  margin-top: 5vh;
-  font-size: 3rem;
-}
-
 button {
   background-color: rgb(26, 115, 232);
   border: none;
