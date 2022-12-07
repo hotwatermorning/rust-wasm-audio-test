@@ -36,3 +36,13 @@ button {
 button:hover {
   background-color: rgb(45, 125, 252);
 }
+
+.slider-with-name {
+  padding: 10px;
+  display: flex;
+  gap: 20px;
+}
+
+.slider-name {
+  width: 100px;
+}

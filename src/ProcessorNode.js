@@ -7,9 +7,10 @@ export default class ProcessorNode extends AudioWorkletNode {
    * @param {number} blockSize Number of audio samples used
    * for each analysis. Must be a power of 2.
    */
-  init(wasmBytes, onProcessCallback, blockSize, wetAmount, feedback) {
+  init(wasmBytes, onProcessCallback, blockSize, delayLength, wetAmount, feedback) {
     this.onProcessCallback = onProcessCallback;
     this.blockSize = blockSize;
+    this.delayLength = delayLength;
     this.wetAmount = wetAmount;
     this.feedback = feedback;
 
@@ -37,6 +38,7 @@ export default class ProcessorNode extends AudioWorkletNode {
         type: "init-processor",
         sampleRate: this.context.sampleRate,
         blockSize: this.blockSize,
+        delayLength: this.delayLength,
         wetAmount: this.wetAmount,
         feedback: this.feedback,
       });
@@ -48,6 +50,10 @@ export default class ProcessorNode extends AudioWorkletNode {
           value: event.value
       });
     } else if (event.type === "set-feedback-amount") {
+      this.port.postMessage({
+          value: event.value
+      });
+    } else if (event.type === "set-delay-length") {
       this.port.postMessage({
           value: event.value
       });

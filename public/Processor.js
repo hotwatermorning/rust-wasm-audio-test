@@ -30,7 +30,7 @@ class Processor extends AudioWorkletProcessor {
         this.port.postMessage({ type: 'wasm-module-loaded' });
       });
     } else if (event.type === 'init-processor') {
-      const { sampleRate, blockSize, wetAmount, feedback } = event;
+      const { sampleRate, blockSize, delayLength, wetAmount, feedback } = event;
 
       // Store this because we use it later to process when we have enough recorded
       // audio samples for our first analysis.
@@ -39,6 +39,7 @@ class Processor extends AudioWorkletProcessor {
       this.processor = WasmProcessor.new(
         sampleRate,
         blockSize,
+        delayLength,
         wetAmount,
         feedback
       );
@@ -54,8 +55,10 @@ class Processor extends AudioWorkletProcessor {
       this.processor.set_wet_amount(event.value);
     } else if(event.type === "set-feedback-amount") {
       this.processor.set_feedback_amount(event.value);
+    } else if(event.type === "set-delay-length") {
+      this.processor.set_delay_length(event.value);
     }
-  };
+  }
 
   process(inputs, outputs) {
 

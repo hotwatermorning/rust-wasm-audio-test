@@ -109,7 +109,7 @@ export async function setupAudio(onProcessCallback) {
     // Send the Wasm module to the audio node which in turn passes it to the
     // processor running in the Worklet thread. Also, pass any configuration
     // parameters for the Wasm audio processing.
-    node.init(wasmBytes, onProcessCallback, blockSize, 0, 0);
+    node.init(wasmBytes, onProcessCallback, blockSize, 0.2, 0.5, 0.5);
 
     // Connect the audio source (microphone output) to our analysis node.
     audioSource.connect(node);

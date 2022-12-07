@@ -84,6 +84,8 @@ pub struct WasmProcessor {
 impl WasmProcessor {
   pub fn new(
     sample_rate: usize,
+    block_size: usize,
+    initial_delay_length: f32,
     initial_wet_amount: f32,
     initial_feedback_amount: f32
   ) -> WasmProcessor {
@@ -91,10 +93,14 @@ impl WasmProcessor {
 
     unsafe { MIN_DECIBEL_GAIN = decibel_to_gain(MIN_DECIBEL); };
 
+    let len = unsafe { (initial_delay_length * sample_rate as f32).to_int_unchecked::<usize>() };
+    log!("initial-delay-length {}", initial_delay_length);
+    log!("len {}", len);
+
     let d = WasmProcessor {
       sample_rate,
       phase: 0.0,
-      delay: DelayLine::new(8192, initial_wet_amount, initial_feedback_amount),
+      delay: DelayLine::new(len, initial_wet_amount, initial_feedback_amount),
       input_level: MIN_DECIBEL,
       output_level: MIN_DECIBEL,
     };
@@ -134,6 +140,12 @@ impl WasmProcessor {
   }
 
   pub fn set_feedback_amount(&mut self, value: f32) {
+    log!("wet-amount: {}, feedback: {}, length: {}", self.delay.wet_amount, self.delay.feedback_amount, self.delay.length);
     self.delay.feedback_amount = value;
+  }
+
+  pub fn set_delay_length(&mut self, value: f32) {
+    let len = unsafe { (value * self.sample_rate as f32).to_int_unchecked::<usize>() };
+    self.delay = DelayLine::new(len, self.delay.wet_amount, self.delay.feedback_amount);
   }
 }

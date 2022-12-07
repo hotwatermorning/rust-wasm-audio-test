@@ -2,13 +2,15 @@ import React, { useEffect, useState } from "react";
 import "./App.css";
 import { setupAudio } from "./setupAudio";
 
-function SliderWithName({name, parameterId, onChangeParameter}) {
-  return (<>
-    <>{name}</>
-    <input type="range" defaultValue={0} min={0} max={1} step={"any"}
+function SliderWithName({name, parameterId, onChangeParameter, defaultValue}) {
+  return (
+    <div className="slider-with-name">
+      <div className="slider-name">{name}</div>
+      <input className="slider-body" type="range" defaultValue={defaultValue} min={0} max={1} step={"any"}
   onChange={(event) => onChangeParameter(parameterId, event.target.value)}>
-    </input>
-  </>);
+      </input>
+    </div>
+  );
 }
 
 function Control({ onChangeParameter }) {
@@ -18,11 +20,19 @@ function Control({ onChangeParameter }) {
         name={"Wet Amount"}
         parameterId={"wet-amount"}
         onChangeParameter={onChangeParameter}
+        defaultValue={0.5}
       />
       <SliderWithName
         name={"Feedback"}
         parameterId={"feedback-amount"}
         onChangeParameter={onChangeParameter}
+        defaultValue={0.5}
+      />
+      <SliderWithName
+        name={"Delay Length"}
+        parameterId={"delay-length"}
+        onChangeParameter={onChangeParameter}
+        defaultValue={0.2}
       />
     </>
   );
@@ -103,6 +113,11 @@ function AudioRecorderControl() {
     } else if(type === "feedback-amount") {
       audio.node.port.postMessage({
         type: "set-feedback-amount",
+        value
+      });
+    } else if(type === "delay-length") {
+      audio.node.port.postMessage({
+        type: "set-delay-length",
         value
       });
     }
