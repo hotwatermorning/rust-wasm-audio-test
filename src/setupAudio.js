@@ -1,20 +1,5 @@
 import ProcessorNode from "./ProcessorNode";
 
-/*
-audioinput : 既定 - MacBook Pro Microphone (Built-in) : default
-setupAudio.js:14 audioinput : BlackHole 64ch (Virtual) : 047f096c25552c490de4f582ffcf7cd97fc7456d49321c5437bbae486406ad37
-setupAudio.js:14 audioinput : MacBook Pro Microphone (Built-in) : 70608a39fb682b7a1c3e01a80f83ccc182ad2f051c9f553d4dc3d6b67e222781
-setupAudio.js:14 audioinput : VB-Cable (Virtual) : e51d45e84eaeda29649183715daa5933a7e992662e606c988797d0652568771c
-setupAudio.js:14 audioinput : ZoomAudioDevice (Virtual) : 45e3fd7fd7a9d62240addee2844650abc1719a335d37fe4a5769062d26ba8ddf
-setupAudio.js:14 videoinput :  :
-setupAudio.js:14 audiooutput : 既定 - External Headphones (Built-in) : default
-setupAudio.js:14 audiooutput : BlackHole 64ch (Virtual) : 047f096c25552c490de4f582ffcf7cd97fc7456d49321c5437bbae486406ad37
-setupAudio.js:14 audiooutput : External Headphones (Built-in) : 8cbd1aaec12613a0cfeb98a54535827bf846becf522eda5de4aa8df16cbb22ad
-setupAudio.js:14 audiooutput : MacBook Pro Speakers (Built-in) : 490713ab9dd95f95fcac40c6c45f2306b77a06d55ba3d5281452d777b90d1bec
-setupAudio.js:14 audiooutput : VB-Cable (Virtual) : e51d45e84eaeda29649183715daa5933a7e992662e606c988797d0652568771c
-setupAudio.js:14 audiooutput : ZoomAudioDevice (Virtual) : 45e3fd7fd7a9d62240addee2844650abc1719a335d37fe4a5769062d26ba8ddf
-*/
-
 async function getWebAudioMediaStream() {
   if (!window.navigator.mediaDevices) {
     throw new Error(
@@ -29,14 +14,14 @@ async function getWebAudioMediaStream() {
         console.log(`${device.kind} : ${device.label} : ${device.deviceId}`);
     }
 
-    for(const device of devices) {
-        if(device.kind === "audioinput" && device.label.indexOf("MacBook Pro Microphone") !== -1) {
-            return await window.navigator.mediaDevices.getUserMedia({
-                audio: { deviceId: device.deviceId },
-                video: false
-            });
-        }
-    }
+    // for(const device of devices) {
+    //     if(device.kind === "audioinput" && device.label.indexOf("MacBook Pro Microphone") !== -1) {
+    //         return await window.navigator.mediaDevices.getUserMedia({
+    //             audio: { deviceId: device.deviceId },
+    //             video: false
+    //         });
+    //     }
+    // }
 
   } catch(e) {
       console.log(e.name + ": " + e.message);
